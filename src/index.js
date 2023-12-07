@@ -2,10 +2,12 @@ import { connect, close } from './connection.js';
 
 const db = await connect();
 const usersCollection = db.collection("users");
+const articlesCollection = db.collection("articles");
+const studentsCollection = db.collection("students");
 
 const run = async () => {
   try {
-    await getUsersExample();
+    // await getUsersExample();
     // await task1();
     // await task2();
     // await task3();
@@ -45,6 +47,14 @@ async function getUsersExample () {
 // - Get all users, sort them by age (ascending), and return only 5 records with firstName, lastName, and age fields.
 async function task1 () {
   try {
+    const result = await usersCollection
+      .find({})
+      .sort({ age: 1 })
+      .project({ firstName: 1, lastName: 1, age: 1, _id: 0 })
+      .limit(5)
+      .toArray();
+
+    console.log(result)
 
   } catch (err) {
     console.error('task1', err)
@@ -54,6 +64,24 @@ async function task1 () {
 // - Add new field 'skills: []" for all users where age >= 25 && age < 30 or tags includes 'Engineering'
 async function task2 () {
   try {
+    const result = await usersCollection.updateMany(
+      {
+        $or: [
+          {
+            $and: [
+              { age: { $gte: 25 } },
+              { age: { $lt: 30 } }
+            ]
+          },
+          { tags: 'Engineering' }
+        ]
+      },
+      {
+        $set: { skills: [] }
+      }
+    );
+
+    console.log(result)
     
   } catch (err) {
     console.error('task2', err)
@@ -64,7 +92,13 @@ async function task2 () {
 //   Filter: the document should contain the 'skills' field
 async function task3() {
   try {
+    const result = await usersCollection.findOneAndUpdate(
+      { skills: { $exists: true } }, 
+      { $push: { skills: { $each: ['js', 'git'] } } },
+      { returnDocument: 'after' }
+    );
 
+    console.log(result)
   } catch (err) {
     console.error('task3', err)
   }
@@ -74,6 +108,16 @@ async function task3() {
 //   Set firstName: "Jason", lastName: "Wood", tags: ['a', 'b', 'c'], department: 'Support'
 async function task4 () {
   try {
+    const result = await usersCollection.replaceOne(
+      { 
+        $and: [
+        { email: /^john/ }, { 'address.state': 'CA' }
+       ] 
+      },
+      { firstName: "Jason", lastName: "Wood", tags: ['a', 'b', 'c'], department: 'Support' }
+    );
+
+    console.log(result);
 
   } catch (err) {
     console.log('task4', err);
@@ -83,7 +127,12 @@ async function task4 () {
 // - Pull tag 'c' from the first document where firstName: "Jason", lastName: "Wood"
 async function task5 () {
   try {
+    const result = await usersCollection.updateOne(
+      { firstName: "Jason", lastName: "Wood" },
+      { $pull: { tags: 'c' } }
+    );
 
+    console.log(result);
   } catch (err) {
     console.log('task5', err);
   }
@@ -93,6 +142,12 @@ async function task5 () {
 //   ONLY if the 'b' value does not exist in the 'tags'
 async function task6 () {
   try {
+    const result = await usersCollection.updateOne(
+      { firstName: "Jason", lastName: "Wood" },
+      { $addToSet: { tags: 'b' } }
+    );
+
+    console.log(result);
 
   } catch (err) {
     console.log('task6', err);
@@ -102,7 +157,11 @@ async function task6 () {
 // - Delete all users by department (Support)
 async function task7 () {
   try {
+    const result = await usersCollection.deleteMany(
+      { department: 'Support' }
+    );
 
+    console.log(result);
   } catch (err) {
     console.log('task7', err);
   }
@@ -116,6 +175,31 @@ async function task7 () {
 //   Pull ['tag2', 'tag1-a'] from all articles
 async function task8 () {
   try {
+    const result = await articlesCollection.bulkWrite([
+      { insertOne: { document: { name: "First article", description: "First article", type: "a", tags: [] } } },
+      { insertOne: { document: { name: "Second article", description: "Second article", type: "b", tags: [] } } },
+      { insertOne: { document: { name: "Third article", description: "Third article", type: "c", tags: [] } } },
+      {
+        updateOne: {
+          filter: { type: "a" },
+          update: { $set: { tags: ['tag1-a', 'tag2-a', 'tag3'] } }
+        }
+      },
+      {
+        updateMany: {
+          filter: { type: { $not: { $eq: 'a' } } },
+          update: { $push: { tags: { $each: ['tag2', 'tag3', 'super'] } } }
+        }
+      },
+      {
+        updateMany: {
+          filter: { },
+          update: { $pull: { tags: { $in: ['tag2', 'tag1-a'] } } }
+        }
+      },
+    ]);
+
+    console.log(result);
     
   } catch (err) {
     console.error('task8', err);
@@ -125,6 +209,11 @@ async function task8 () {
 // - Find all articles that contains tags 'super' or 'tag2-a'
 async function task9 () {
   try {
+    const result = await articlesCollection.find(
+      { tags: { $in: ['super', 'tag2-a'] } }
+    ).toArray();
+
+    console.log(result);
 
   } catch (err) {
     console.log('task9', err);
@@ -135,6 +224,15 @@ async function task9 () {
 // - Find the student who have the worst score for homework, the result should be [ { name: <name>, worst_homework_score: <score> } ]
 async function task10 () {
   try {
+    const result = await studentsCollection.aggregate([
+      { $unwind: "$scores" },
+      { $match: { "scores.type": "homework" } },
+      { $sort: { "scores.score": 1 } },
+      { $limit: 1 },
+      { $project: { _id: 0, name: 1, worst_homework_score: "$scores.score" } }
+    ]).toArray();
+
+    console.log(result)
 
   } catch (err) {
     console.log('task10', err);
@@ -144,7 +242,19 @@ async function task10 () {
 // - Calculate the average score for homework for all students, the result should be [ { avg_score: <number> } ]
 async function task11 () {
   try {
+    const result = await studentsCollection.aggregate([
+      { $unwind: "$scores" },
+      { $match: { "scores.type": "homework" } },
+      {
+        $group: {
+          _id: null,
+          avg_score: { $avg: "$scores.score" }
+        }
+      },
+      { $project: { _id: 0 } }
+    ]).toArray();
 
+    console.log(result)
   } catch (err) {
     console.log('task11', err);
   } 
@@ -153,6 +263,21 @@ async function task11 () {
 // - Calculate the average score by all types (homework, exam, quiz) for each student, sort from the largest to the smallest value
 async function task12 () {
   try {
+    const result = await studentsCollection.aggregate([
+      { $unwind: '$scores' },
+      { 
+        $group: {
+          _id: "$_id",
+          name: { $first: "$name" },
+          scores: { $push: "$scores.score" },
+        }
+      },
+      { $addFields: { avg_score: { $avg: "$scores" } } },
+      { $sort: { "avg_score": -1 } },
+      { $project: { scores: 0 } }
+    ]).toArray();
+
+    console.log(result)
 
   } catch (err) {
     console.log('task12', err);
